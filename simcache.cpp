@@ -59,10 +59,24 @@ void print_log_entry(const string& cache_name, const string& status, int pc, int
 }
 
 class Cache {
-    struct Cell {
-        int tag = 0; // holds calculated tag value
-        int cycle = -1; // -1 if not accessed yet, keeps track of cycle of access
+    struct Block {
+        struct Cell {
+            Cell() {
+                tag = 0;
+                cycle = -1;
+            };
+            int tag; // holds calculated tag value
+            int cycle; // -1 if not accessed yet, keeps track of cycle of access
+        };
+        Block(int asso) {vector<Cell> cells(asso, Cell());}
+        Cell&operator[](size_t idx){ return cells[idx];};
+        int size(){return cells.size();}
+
+        bool full = false;
+        vector<Cell> cells;
+
     };
+
 public:
     Cache(const string& c_name, int c_size, int c_assoc, int c_block_size) {
         int num_rows = size / (asso * block_size);
@@ -71,27 +85,27 @@ public:
         size = c_size;
         asso = c_assoc;
         block_size = c_block_size;
-        vector<Cell> block(asso, Cell());
-        rows = vector<vector<Cell> >(num_rows, block);
+        Block block(asso);
+        rows = vector<Block>(num_rows, block);
     }
 
     Cache();
 
     int getNumRows() { return rows.size(); }
 
-    int handleMiss(vector<Cell>& curr_block,int new_tag, int cycle) {
+    int handleMiss(Block& curr_block, int new_tag, int cycle) {
         // Handle Miss
         size_t offset = 0;
         size_t target = 0;
         bool found = false;
         bool full = false;
         while (!found) {
-            Cell curr_cell = curr_block[offset];
+            Block::Cell curr_cell = curr_block[offset];
             if (curr_cell.cycle > 0) {
                 // Find inValid Cell
                 found = true;
                 target = offset;
-            } else if (offset == curr_block.size() and !found){
+            } else if (offset == curr_block.size() and !found) {
 
 
             }
@@ -107,11 +121,11 @@ public:
         int tag_query = block_id / rows.size();
 
         // Index the relevant block
-        vector<Cell> curr_block = rows[row_idx];
+        Block curr_block = rows[row_idx];
 
 
         for (size_t offset = 0; offset < curr_block.size(); offset++) {
-            Cell curr_cell = curr_block[offset];
+            Block::Cell curr_cell = curr_block[offset];
             if (curr_cell.tag == tag_query) {
                 status = "HIT"; // Update Status
                 curr_cell.cycle = cycle; // Set New cycle
@@ -121,7 +135,7 @@ public:
 
         if (status != "HIT") {
             status = "MISS"; // Update Status
-            handleMiss(curr_block,tag_query,cycle);
+            handleMiss(curr_block, tag_query, cycle);
 
         }
 
@@ -134,7 +148,7 @@ private:
     int size = 0;
     int asso = 0;
     int block_size = 0;
-    vector<vector<Cell> > rows;
+    vector<Block > rows;
 };
 
 size_t const static NUM_REGS = 8;
