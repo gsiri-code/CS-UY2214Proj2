@@ -75,14 +75,14 @@ class Cache {
 
         int size() { return cells.size(); }
 
-        bool full = false;
+        bool full;
         vector<Cell> cells;
 
     };
 
 public:
     Cache(const string& c_name, int c_size, int c_assoc, int c_block_size) {
-        int num_rows = size / (asso * block_size);
+        int num_rows = c_size / (c_assoc * c_block_size);
 
         name = c_name;
         size = c_size;
@@ -90,9 +90,9 @@ public:
         block_size = c_block_size;
         Block block(asso);
         rows = vector<Block>(num_rows, block);
-    }
+        print_cache_config(c_name,c_size,c_assoc,c_block_size,num_rows);
 
-    Cache();
+    }
 
     int getNumRows() { return rows.size(); }
 
@@ -104,16 +104,14 @@ public:
 
         if (curr_block.full) { // Searching for LRU in full block
             for (size_t idx = 0; idx < curr_block.size(); idx++) {
-                Block::Cell curr_cell = curr_block[offset];
-                if (curr_cell.cycle < min_cycle) {
-                    min_cycle = curr_cell.cycle;
+                if (curr_block[offset].cycle < min_cycle) { // Find least value cycle in vector
+                    min_cycle = curr_block[offset].cycle;
                     target = idx;
                 }
             }
         } else
             while (target < 1) { // Searching for empty cell in not full block
-                Block::Cell curr_cell = curr_block[offset];
-                if (curr_cell.cycle > 0) {
+                if (curr_block[offset].cycle > 0) {
                     // Find inValid Cell
                     target = offset;
                 }
@@ -125,22 +123,28 @@ public:
         curr_block[target].cycle = cycle;
     }
 
-    const void access(int cycle, int addr, uint16_t pc) {
+    void access(int cycle, int addr, uint16_t pc) {
+        cout << "HIT ACCESS" << endl;
         string status = "";
         // Get Parameters
         int block_id = addr / block_size;
         int row_idx = (block_id % rows.size());
         int tag_query = block_id / rows.size();
 
+        cout << "Parameters:\n\tblock_id: " << block_id <<"\n\trow_idx:" << row_idx <<"\n\ttag_query:" << tag_query << endl;
+
+
+
+
+
         // Index the relevant block
         Block curr_block = rows[row_idx];
 
 
         for (size_t offset = 0; offset < curr_block.size(); offset++) {
-            Block::Cell curr_cell = curr_block[offset];
-            if (curr_cell.tag == tag_query) {
+            if (curr_block[offset].tag == tag_query) {
                 status = "HIT"; // Update Status
-                curr_cell.cycle = cycle; // Set New cycle
+                curr_block[offset].cycle = cycle; // Set New cycle
                 break;
             }
         }
@@ -148,17 +152,16 @@ public:
         if (status != "HIT") {
             status = "MISS"; // Update Status
             handleMiss(curr_block, tag_query, cycle);
-
         }
 
-        return print_log_entry("L1", status, pc, addr, row_idx);
+        print_log_entry("L1", status, pc, addr, row_idx);
     }
 
 private:
-    string name = "";
-    int size = 0;
-    int asso = 0;
-    int block_size = 0;
+    string name;
+    int size;
+    int asso;
+    int block_size;
     vector<Block> rows;
 };
 
@@ -192,10 +195,12 @@ void load_machine_code(ifstream& f, uint16_t mem[]) {
 
 
 void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2, bool useL2) {
+
     bool halt = false; //Set a flag for halt instruction
     int cycle = 0;
 
     while (!halt) { //Continue to run until halt is flagged
+        cout << cycle << endl;
 
         //Access Memory at current Program Counter
         uint16_t curr_ins = mem[pc & 8191]; //Read only 13 bits of pc
@@ -241,13 +246,15 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2, bo
             else if (opCode == 0b010) new_pc = imm13; //j
 
             else if (opCode == 0b100) {
-
+                cout << "HIT LW" << endl;
                 uint16_t addr = (regs[rA] + imm7) & 8191;
                 L1.access(cycle, addr, pc);
 
 
                 regs[rB] = mem[(regs[rA] + imm7) & 8191];// lw
             } else if (opCode == 0b101) {
+                cout << "HIT SW" << endl;
+
                 mem[(regs[rA] + imm7) & 8191] = regs[rB];// sw
             } else if (opCode == 0b110) new_pc = regs[rA] == regs[rB] ? (pc + 1 + imm7) : pc + 1;// jeq
 
@@ -331,8 +338,9 @@ int main(int argc, char* argv[]) {
     }
     load_machine_code(f, mem);
 
+
     /* parse cache config */
-    if (cache_config.empty()) {
+    if (cache_config.size() > 0) {
         vector<int> parts;
         size_t pos;
         size_t lastpos = 0;
@@ -352,7 +360,7 @@ int main(int argc, char* argv[]) {
         bool useL2 = false;
 
         if (parts.size() == 3) {
-            Cache L2 = Cache();
+            Cache L2 = Cache("L1", L1size, L1assoc, L1blocksize);
             sim(pc, regArr, mem, L1, L2, useL2);
         } else if (parts.size() == 6) {
             int L2size = parts[3];
