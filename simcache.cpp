@@ -68,9 +68,12 @@ class Cache {
             int tag; // holds calculated tag value
             int cycle; // -1 if not accessed yet, keeps track of cycle of access
         };
-        Block(int asso) {vector<Cell> cells(asso, Cell());}
-        Cell&operator[](size_t idx){ return cells[idx];};
-        int size(){return cells.size();}
+
+        Block(int asso) { vector<Cell> cells(asso, Cell()); }
+
+        Cell& operator[](size_t idx) { return cells[idx]; };
+
+        int size() { return cells.size(); }
 
         bool full = false;
         vector<Cell> cells;
@@ -93,24 +96,33 @@ public:
 
     int getNumRows() { return rows.size(); }
 
-    int handleMiss(Block& curr_block, int new_tag, int cycle) {
+    void handleMiss(Block& curr_block, int new_tag, int cycle) {
         // Handle Miss
         size_t offset = 0;
         size_t target = 0;
-        bool found = false;
-        bool full = false;
-        while (!found) {
-            Block::Cell curr_cell = curr_block[offset];
-            if (curr_cell.cycle > 0) {
-                // Find inValid Cell
-                found = true;
-                target = offset;
-            } else if (offset == curr_block.size() and !found) {
+        int min_cycle = -1;
 
-
+        if (curr_block.full) { // Searching for LRU in full block
+            for (size_t idx = 0; idx < curr_block.size(); idx++) {
+                Block::Cell curr_cell = curr_block[offset];
+                if (curr_cell.cycle < min_cycle) {
+                    min_cycle = curr_cell.cycle;
+                    target = idx;
+                }
             }
-            offset++;
-        }
+        } else
+            while (target < 1) { // Searching for empty cell in not full block
+                Block::Cell curr_cell = curr_block[offset];
+                if (curr_cell.cycle > 0) {
+                    // Find inValid Cell
+                    target = offset;
+                }
+                offset++;
+            }
+
+        // Set LRU values or empty cell to MRU values
+        curr_block[target].tag = new_tag;
+        curr_block[target].cycle = cycle;
     }
 
     const void access(int cycle, int addr, uint16_t pc) {
@@ -139,7 +151,6 @@ public:
 
         }
 
-
         return print_log_entry("L1", status, pc, addr, row_idx);
     }
 
@@ -148,7 +159,7 @@ private:
     int size = 0;
     int asso = 0;
     int block_size = 0;
-    vector<Block > rows;
+    vector<Block> rows;
 };
 
 size_t const static NUM_REGS = 8;
