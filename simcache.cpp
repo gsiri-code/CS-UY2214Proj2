@@ -61,40 +61,38 @@ void print_log_entry(const string& cache_name, const string& status, int pc, int
 class Cache {
     struct Block {
         struct Cell {
+            int tag;
+            int cycle; // -1 if not accessed yet, keeps track of cycle @ access
             Cell() {
                 tag = 0;
                 cycle = -1;
             };
-            int tag; // holds calculated tag value
-            int cycle; // -1 if not accessed yet, keeps track of cycle of access
         };
+        bool full;
+        vector<Cell> cells;
 
-        Block(int asso) { vector<Cell> cells(asso, Cell()); }
+        Block(int asso) {
+            cells = vector<Cell>(asso, Cell());
+            full= false; }
 
         Cell& operator[](size_t idx) { return cells[idx]; };
 
         int size() { return cells.size(); }
 
-        bool full;
-        vector<Cell> cells;
-
     };
 
 public:
     Cache(const string& c_name, int c_size, int c_assoc, int c_block_size) {
-        int num_rows = c_size / (c_assoc * c_block_size);
 
-        name = c_name;
-        size = c_size;
-        asso = c_assoc;
-        block_size = c_block_size;
-        Block block(asso);
-        rows = vector<Block>(num_rows, block);
-        print_cache_config(c_name,c_size,c_assoc,c_block_size,num_rows);
-
+        if (c_name != "dummy") {
+            int num_rows = c_size / (c_assoc * c_block_size);
+            print_cache_config(c_name,c_size,c_assoc,c_block_size,num_rows);
+            name = c_name;
+            asso = c_assoc;
+            block_size = c_block_size;
+            rows = vector<Block>(num_rows, Block(c_assoc));
+        }
     }
-
-    int getNumRows() { return rows.size(); }
 
     void handleMiss(Block& curr_block, int new_tag, int cycle) {
         // Handle Miss
@@ -103,10 +101,10 @@ public:
         int min_cycle = -1;
 
         if (curr_block.full) { // Searching for LRU in full block
-            for (size_t idx = 0; idx < curr_block.size(); idx++) {
+            for (size_t offset = 0; offset < curr_block.size(); offset++) {
                 if (curr_block[offset].cycle < min_cycle) { // Find least value cycle in vector
                     min_cycle = curr_block[offset].cycle;
-                    target = idx;
+                    target = offset;
                 }
             }
         } else
@@ -124,22 +122,14 @@ public:
     }
 
     void access(int cycle, int addr, uint16_t pc) {
-        cout << "HIT ACCESS" << endl;
         string status = "";
         // Get Parameters
         int block_id = addr / block_size;
         int row_idx = (block_id % rows.size());
         int tag_query = block_id / rows.size();
 
-        cout << "Parameters:\n\tblock_id: " << block_id <<"\n\trow_idx:" << row_idx <<"\n\ttag_query:" << tag_query << endl;
-
-
-
-
-
         // Index the relevant block
         Block curr_block = rows[row_idx];
-
 
         for (size_t offset = 0; offset < curr_block.size(); offset++) {
             if (curr_block[offset].tag == tag_query) {
@@ -149,17 +139,16 @@ public:
             }
         }
 
+
         if (status != "HIT") {
             status = "MISS"; // Update Status
             handleMiss(curr_block, tag_query, cycle);
         }
-
         print_log_entry("L1", status, pc, addr, row_idx);
     }
 
 private:
     string name;
-    int size;
     int asso;
     int block_size;
     vector<Block> rows;
@@ -194,13 +183,13 @@ void load_machine_code(ifstream& f, uint16_t mem[]) {
 }
 
 
-void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2, bool useL2) {
+void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2) {
 
     bool halt = false; //Set a flag for halt instruction
     int cycle = 0;
 
     while (!halt) { //Continue to run until halt is flagged
-        cout << cycle << endl;
+//        cout << cycle << endl;
 
         //Access Memory at current Program Counter
         uint16_t curr_ins = mem[pc & 8191]; //Read only 13 bits of pc
@@ -224,7 +213,6 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2, bo
         //Defaulted increment of Program counter
         uint16_t new_pc = pc + 1;
 
-
         if (opCode == 0b000) {
             // Three reg instructions (add, sub, or, and, slt, jr)
             if (func == 0b0000) regs[rC] = regs[rA] + regs[rB]; // add
@@ -246,15 +234,11 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2, bo
             else if (opCode == 0b010) new_pc = imm13; //j
 
             else if (opCode == 0b100) {
-                cout << "HIT LW" << endl;
                 uint16_t addr = (regs[rA] + imm7) & 8191;
                 L1.access(cycle, addr, pc);
 
-
                 regs[rB] = mem[(regs[rA] + imm7) & 8191];// lw
             } else if (opCode == 0b101) {
-                cout << "HIT SW" << endl;
-
                 mem[(regs[rA] + imm7) & 8191] = regs[rB];// sw
             } else if (opCode == 0b110) new_pc = regs[rA] == regs[rB] ? (pc + 1 + imm7) : pc + 1;// jeq
 
@@ -350,29 +334,23 @@ int main(int argc, char* argv[]) {
         }
         parts.push_back(stoi(cache_config.substr(lastpos)));
 
+        // L1 parts
         int L1size = parts[0];
         int L1assoc = parts[1];
         int L1blocksize = parts[2];
+        // L2 parts
+        int L2size = parts[3];
+        int L2assoc = parts[4];
+        int L2blocksize = parts[5];
 
         Cache L1 = Cache("L1", L1size, L1assoc, L1blocksize);
-        print_cache_config("L1", L1size, L1assoc, L1blocksize, L1.getNumRows());
-
-        bool useL2 = false;
+        Cache L2 = Cache("dummy", 0, 0, 0);
 
         if (parts.size() == 3) {
-            Cache L2 = Cache("L1", L1size, L1assoc, L1blocksize);
-            sim(pc, regArr, mem, L1, L2, useL2);
+            sim(pc, regArr, mem, L1, L2);
         } else if (parts.size() == 6) {
-            int L2size = parts[3];
-            int L2assoc = parts[4];
-            int L2blocksize = parts[5];
-            useL2 = true;
-//             TODO: execute E20 program and simulate two caches here
+            sim(pc, regArr, mem, L1, L2);
             Cache L2 = Cache("L2", L2size, L2assoc, L2blocksize);
-            print_cache_config("L2", L2size, L2assoc, L2blocksize, L2.getNumRows());
-
-            sim(pc, regArr, mem, L1, L2, useL2);
-
         } else {
             cerr << "Invalid cache config" << endl;
             return 1;
