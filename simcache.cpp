@@ -68,12 +68,14 @@ class Cache {
                 cycle = -1;
             };
         };
+
         bool full;
         vector<Cell> cells;
 
         Block(int asso) {
             cells = vector<Cell>(asso, Cell());
-            full= false; }
+            full = false;
+        }
 
         Cell& operator[](size_t idx) { return cells[idx]; };
 
@@ -83,18 +85,18 @@ class Cache {
 
 public:
     Cache(const string& c_name, int c_size, int c_assoc, int c_block_size) {
+        name = c_name;
 
         if (c_name != "dummy") {
             int num_rows = c_size / (c_assoc * c_block_size);
-            print_cache_config(c_name,c_size,c_assoc,c_block_size,num_rows);
-            name = c_name;
+            print_cache_config(c_name, c_size, c_assoc, c_block_size, num_rows);
             asso = c_assoc;
             block_size = c_block_size;
             rows = vector<Block>(num_rows, Block(c_assoc));
         }
     }
 
-    void handleMiss(Block& curr_block, int new_tag, int cycle) {
+    void writeCache(Block& curr_block, int new_tag, int cycle) {
         // Handle Miss
         size_t offset = 0;
         size_t target = 0;
@@ -121,8 +123,10 @@ public:
         curr_block[target].cycle = cycle;
     }
 
-    void access(int cycle, int addr, uint16_t pc) {
-        string status = "";
+    const string& getName() const { return name; }
+
+    const string& access(const string& ins, int cycle, int addr, uint16_t pc) {
+        string status = ins;
         // Get Parameters
         int block_id = addr / block_size;
         int row_idx = (block_id % rows.size());
@@ -131,20 +135,21 @@ public:
         // Index the relevant block
         Block curr_block = rows[row_idx];
 
-        for (size_t offset = 0; offset < curr_block.size(); offset++) {
-            if (curr_block[offset].tag == tag_query) {
-                status = "HIT"; // Update Status
-                curr_block[offset].cycle = cycle; // Set New cycle
-                break;
+        if (ins == "LW") {
+            for (size_t offset = 0; offset < curr_block.size(); offset++) {
+                if (curr_block[offset].tag == tag_query) {
+                    status = "HIT"; // Update Status
+                    curr_block[offset].cycle = cycle; // Set New cycle
+                    break;
+                }
             }
+            string status = "MISS";
         }
 
+        if (status != "HIT") writeCache(curr_block, tag_query, cycle);
 
-        if (status != "HIT") {
-            status = "MISS"; // Update Status
-            handleMiss(curr_block, tag_query, cycle);
-        }
-        print_log_entry("L1", status, pc, addr, row_idx);
+        print_log_entry(name, status, pc, addr, row_idx);
+        return status;
     }
 
 private:
@@ -209,6 +214,7 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2) {
         uint16_t imm7 = curr_ins & 127;
         if (imm7 & 64) imm7 |= 65408; // Sign extend 7 if its negative
         uint16_t imm13 = curr_ins & 0x1FFF; // Zero extend imm13
+        uint16_t addr = (regs[rA] + imm7) & 8191;
 
         //Defaulted increment of Program counter
         uint16_t new_pc = pc + 1;
@@ -233,13 +239,19 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2) {
 
             else if (opCode == 0b010) new_pc = imm13; //j
 
-            else if (opCode == 0b100) {
-                uint16_t addr = (regs[rA] + imm7) & 8191;
-                L1.access(cycle, addr, pc);
+            else if (opCode == 0b100) {// lw
 
-                regs[rB] = mem[(regs[rA] + imm7) & 8191];// lw
-            } else if (opCode == 0b101) {
-                mem[(regs[rA] + imm7) & 8191] = regs[rB];// sw
+                string L1_status = L1.access("LW", cycle, addr, pc);
+
+                if (L1_status == "MISS" && L2.getName() == "L2") L2.access("LW", cycle, addr, pc);
+
+                regs[rB] = mem[(regs[rA] + imm7) & 8191];
+            } else if (opCode == 0b101) {// sw
+                string L1_status = L1.access("SW", cycle, addr, pc);
+
+                if (L1_status == "SW" && L2.getName() == "L2") L2.access("SW", cycle, addr, pc);
+
+                mem[(regs[rA] + imm7) & 8191] = regs[rB];
             } else if (opCode == 0b110) new_pc = regs[rA] == regs[rB] ? (pc + 1 + imm7) : pc + 1;// jeq
 
             else if (opCode == 0b111) regs[rB] = regs[rA] < imm7;// slti
