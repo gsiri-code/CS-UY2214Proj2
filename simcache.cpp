@@ -103,24 +103,16 @@ public:
 
     void writeCache(vector<int>& curr_block, int new_tag) {
         // shift all values down 1
-//        cout << "WRITE CACHE BEFORE:"<<endl;
-//        for (int x: curr_block){cout << x << " " ;}
-//        cout << endl;
-
         for (size_t idx = curr_block.size() - 1; idx > 0; idx--) {
             curr_block[idx] = curr_block[idx - 1];
         }
         curr_block[0] = new_tag;
 
-//        cout << "WRITE CACHE AFTER:"<<endl;
-//        for (int x: curr_block){cout << x << " " ;}
-//        cout << endl;
     }
 
-    string handleLW(vector<int>& curr_block, int tag_query) const{
+    string handleLW(vector<int>& curr_block, int tag_query) const {
         int target = -1;
         for (int offset = 0; offset < curr_block.size(); offset++) {//try to find a hit
-            int current_shit = curr_block[offset];
             if (curr_block[offset] == tag_query) {
                 target = offset;
                 break;
@@ -247,7 +239,7 @@ void sim(uint16_t& pc, uint16_t regs[], uint16_t mem[], Cache& L1, Cache& L2) {
 }
 
 
-/**
+/*
     Main function
     Takes command-line args as documented below
 */
@@ -260,90 +252,85 @@ int main(int argc, char* argv[]) {
     /*
         Parse the command-line arguments
     */
-//    char* filename = nullptr;
-//    bool do_help = false;
-//    bool arg_error = false;
-//    string cache_config;
-//    for (int i = 1; i < argc; i++) {
-//        string arg(argv[i]);
-//        if (arg.rfind("-", 0) == 0) {
-//            if (arg == "-h" || arg == "--help")
-//                do_help = true;
-//            else if (arg == "--cache") {
-//                i++;
-//                if (i >= argc)
-//                    arg_error = true;
-//                else
-//                    cache_config = argv[i];
-//            } else
-//                arg_error = true;
-//        } else {
-//            if (filename == nullptr)
-//                filename = argv[i];
-//            else
-//                arg_error = true;
-//        }
-//    }
+    char* filename = nullptr;
+    bool do_help = false;
+    bool arg_error = false;
+    string cache_config;
+    for (int i = 1; i < argc; i++) {
+        string arg(argv[i]);
+        if (arg.rfind("-", 0) == 0) {
+            if (arg == "-h" || arg == "--help")
+                do_help = true;
+            else if (arg == "--cache") {
+                i++;
+                if (i >= argc)
+                    arg_error = true;
+                else
+                    cache_config = argv[i];
+            } else
+                arg_error = true;
+        } else {
+            if (filename == nullptr)
+                filename = argv[i];
+            else
+                arg_error = true;
+        }
+    }
     /* Display error message if appropriate */
-//    if (arg_error || do_help || filename == nullptr) {
-//        cerr << "usage " << argv[0] << " [-h] [--cache CACHE] filename" << endl << endl;
-//        cerr << "Simulate E20 cache" << endl << endl;
-//        cerr << "positional arguments:" << endl;
-//        cerr << "  filename    The file containing machine code, typically with .bin suffix" << endl << endl;
-//        cerr << "optional arguments:" << endl;
-//        cerr << "  -h, --help  show this help message and exit" << endl;
-//        cerr << "  --cache CACHE  Cache configuration: size,associativity,blocksize (for one" << endl;
-//        cerr << "                 cache) or" << endl;
-//        cerr << "                 size,associativity,blocksize,size,associativity,blocksize" << endl;
-//        cerr << "                 (for two caches)" << endl;
-//        return 1;
-//    }
+    if (arg_error || do_help || filename == nullptr) {
+        cerr << "usage " << argv[0] << " [-h] [--cache CACHE] filename" << endl << endl;
+        cerr << "Simulate E20 cache" << endl << endl;
+        cerr << "positional arguments:" << endl;
+        cerr << "  filename    The file containing machine code, typically with .bin suffix" << endl << endl;
+        cerr << "optional arguments:" << endl;
+        cerr << "  -h, --help  show this help message and exit" << endl;
+        cerr << "  --cache CACHE  Cache configuration: size,associativity,blocksize (for one" << endl;
+        cerr << "                 cache) or" << endl;
+        cerr << "                 size,associativity,blocksize,size,associativity,blocksize" << endl;
+        cerr << "                 (for two caches)" << endl;
+        return 1;
+    }
 
-//    ifstream f(filename);
-    ifstream f("test.bin"); //Temp test shi
-//    if (!f.is_open()) {
-//        cerr << "Can't open file " << filename << endl;
-//        return 1;
-//    }
+    ifstream f(filename);
+    if (!f.is_open()) {
+        cerr << "Can't open file " << filename << endl;
+        return 1;
+    }
     load_machine_code(f, mem);
 
 
-    /* parse cache config */
-//    if (cache_config.size() > 0) {
-//        vector<int> parts;
-//        size_t pos;
-//        size_t lastpos = 0;
-//        while ((pos = cache_config.find(",", lastpos)) != string::npos) {
-//            parts.push_back(stoi(cache_config.substr(lastpos, pos)));
-//            lastpos = pos + 1;
-//        }
-//        parts.push_back(stoi(cache_config.substr(lastpos)));
+    if (cache_config.size() > 0) {
+        vector<int> parts;
+        size_t pos;
+        size_t lastpos = 0;
+        while ((pos = cache_config.find(",", lastpos)) != string::npos) {
+            parts.push_back(stoi(cache_config.substr(lastpos, pos)));
+            lastpos = pos + 1;
+        }
+        parts.push_back(stoi(cache_config.substr(lastpos)));
 
-    // L1 parts
-//        int L1size = parts[0];
-//        int L1assoc = parts[1];
-//        int L1blocksize = parts[2];
+        // L1 parts
+        int L1size = parts[0];
+        int L1assoc = parts[1];
+        int L1blocksize = parts[2];
 
-    int L1size = 4;
-    int L1assoc = 1;
-    int L1blocksize = 2;
-    // L2 parts
-    int L2size = 8;
-    int L2assoc = 4;
-    int L2blocksize = 2;
+        // L2 parts
+        int L2size = parts[3];
+        int L2assoc = parts[4];
+        int L2blocksize = parts[5];
 
-    Cache L1 = Cache("L1", L1size, L1assoc, L1blocksize);
-//        Cache L2 = Cache("dummy", 0, 0, 0);
+        Cache L1 = Cache("L1", L1size, L1assoc, L1blocksize);
+        Cache L2 = Cache("dummy", 0, 0, 0);
 
-//        if (parts.size() == 3) {
-//            sim(pc, regArr, mem, L1, L2);
-//        } else if (parts.size() == 6) {
-    Cache L2 = Cache("L2", L2size, L2assoc, L2blocksize);
-    sim(pc, regArr, mem, L1, L2);
-//        } else {
-//            cerr << "Invalid cache config" << endl;
-//            return 1;
-//        }
-//    }
+        if (parts.size() == 3) {
+            sim(pc, regArr, mem, L1, L2);
+        } else if (parts.size() == 6) {
+            Cache L2 = Cache("L2", L2size, L2assoc, L2blocksize);
+            sim(pc, regArr, mem, L1, L2);
+        } else {
+            cerr << "Invalid cache config" << endl;
+            return 1;
+        }
+    }
     return 0;
 }
